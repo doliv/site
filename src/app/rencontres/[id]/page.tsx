@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { meetups, registrations } from "@/db/schema";
 import { register } from "@/lib/actions";
 import { dateTimeFr } from "@/lib/format";
+import { bodyToHtml } from "@/lib/richtext";
 
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> };
@@ -24,7 +25,7 @@ export default async function Meetup({ params, searchParams }: Props) {
       <div className="prose">
         <Link href="/rencontres" className="back">← Toutes les rencontres</Link>
         <h1>{m.title}</h1>
-        {m.description.split(/\n{2,}/).filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+        <div dangerouslySetInnerHTML={{ __html: bodyToHtml(m.description) }} />
       </div>
       <aside className="side">
         <div className="row"><small>Date</small><b>{dateTimeFr(m.startsAt)}</b></div>

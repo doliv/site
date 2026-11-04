@@ -38,3 +38,11 @@ export const registrations = pgTable(
   },
   (t) => [unique().on(t.meetupId, t.email)],
 );
+
+// Pages fixes du site, modifiables depuis l'administration.
+// Pas de ligne = on affiche le texte d'origine (src/content/…).
+export const pages = pgTable("pages", {
+  slug: text("slug").primaryKey(),
+  body: text("body").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

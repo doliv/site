@@ -3,8 +3,12 @@ import { asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { comments, meetups, posts, registrations } from "@/db/schema";
 import { isAdmin } from "@/lib/auth";
-import { createMeetup, createPost, deleteItem, logout, moderate } from "@/lib/actions";
+import { createMeetup, createPost, deleteItem, logout, moderate, resetPage, savePage, updateMeetup, updatePost } from "@/lib/actions";
 import { dateFr, dateTimeFr } from "@/lib/format";
+import HtmlEditor from "@/components/HtmlEditor";
+import { bodyToHtml } from "@/lib/richtext";
+import { toParisInput } from "@/lib/datetime";
+import { getPageHtml, PAGES, type PageSlug } from "@/lib/pages";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Administration", robots: { index: false } };
@@ -20,6 +24,9 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
     db.select().from(meetups).orderBy(desc(meetups.startsAt)),
     db.select().from(registrations).orderBy(asc(registrations.createdAt)),
   ]);
+  const pageList = await Promise.all(
+    (Object.keys(PAGES) as PageSlug[]).map(async (slug) => ({ slug, title: PAGES[slug].title, html: await getPageHtml(slug) })),
+  );
   return (
     <div className="wrap admin" style={{ paddingBottom: 48 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 32 }}>
@@ -27,7 +34,7 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
         <form action={logout}><button className="btn btn-ghost" type="submit">Se déconnecter</button></form>
       </div>
       {q.ok && <div className="notice">Enregistré.</div>}
-      {q.erreur && <div className="notice err">Des champs obligatoires sont manquants.</div>}
+      {q.erreur && <div className="notice err">{q.erreur === "capacite" ? "Le nombre de places ne peut pas être inférieur au nombre d’inscrits." : "Des champs obligatoires sont manquants."}</div>}
 
       <h2>Commentaires à valider ({pending.length})</h2>
       {pending.length === 0 && <p className="empty">Aucun commentaire en attente.</p>}
@@ -43,18 +50,46 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
         </div>
       ))}
 
+      <h2>Pages du site</h2>
+      <p className="meta">Modifiez le texte des pages fixes. « Rétablir » revient au texte d’origine.</p>
+      {pageList.map((p) => (
+        <details key={p.slug}>
+          <summary><b>{p.title}</b></summary>
+          <form action={savePage} className="box">
+            <input type="hidden" name="slug" value={p.slug} />
+            <HtmlEditor name="body" label="Texte de la page" defaultValue={p.html} />
+            <div className="actions">
+              <button className="btn" type="submit">Enregistrer la page</button>
+              <button className="btn btn-ghost" type="submit" formAction={resetPage}>Rétablir le texte d’origine</button>
+            </div>
+          </form>
+        </details>
+      ))}
+
       <h2>Nouvel article</h2>
       <form action={createPost} className="box">
         <label className="field">Titre<input name="title" maxLength={200} required /></label>
         <label className="field">Résumé (facultatif)<input name="excerpt" maxLength={300} /></label>
-        <label className="field">Texte (séparez les paragraphes par une ligne vide)<textarea name="body" rows={10} required /></label>
+        <HtmlEditor name="body" label="Texte de l’article" />
         <button className="btn" type="submit">Publier l’article</button>
       </form>
       {allPosts.map((p) => (
-        <div className="item" key={p.id}>
+        <div key={p.id}>
+        <div className="item">
           <div><b>{p.title}</b><div className="meta">{dateFr(p.publishedAt)}</div></div>
           <form action={deleteItem}><input type="hidden" name="kind" value="post" /><input type="hidden" name="id" value={p.id} />
             <button className="btn btn-ghost">Supprimer</button></form>
+        </div>
+        <details className="edit">
+          <summary>Modifier</summary>
+          <form action={updatePost} className="box">
+            <input type="hidden" name="id" value={p.id} />
+            <label className="field">Titre<input name="title" maxLength={200} required defaultValue={p.title} /></label>
+            <label className="field">Résumé (facultatif)<input name="excerpt" maxLength={300} defaultValue={p.excerpt} /></label>
+            <HtmlEditor name="body" label="Texte de l’article" defaultValue={bodyToHtml(p.body)} />
+            <button className="btn" type="submit">Enregistrer les modifications</button>
+          </form>
+        </details>
         </div>
       ))}
 
@@ -64,13 +99,14 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
         <label className="field">Date et heure (heure de Paris)<input name="startsAt" type="datetime-local" required /></label>
         <label className="field">Lieu<input name="location" maxLength={200} required /></label>
         <label className="field">Nombre de places<input name="capacity" type="number" min={1} defaultValue={20} /></label>
-        <label className="field">Description<textarea name="description" rows={5} /></label>
+        <HtmlEditor name="description" label="Description" />
         <button className="btn" type="submit">Créer la rencontre</button>
       </form>
       {allMeetups.map((m) => {
         const r = regs.filter((x) => x.meetupId === m.id);
         return (
-          <div className="item" key={m.id}>
+          <div key={m.id}>
+          <div className="item">
             <div>
               <b>{m.title}</b>
               <div className="meta">{dateTimeFr(m.startsAt)} · {m.location} · {r.length}/{m.capacity} inscrits</div>
@@ -78,6 +114,19 @@ export default async function Admin({ searchParams }: { searchParams: Promise<Re
             </div>
             <form action={deleteItem}><input type="hidden" name="kind" value="meetup" /><input type="hidden" name="id" value={m.id} />
               <button className="btn btn-ghost">Supprimer</button></form>
+          </div>
+          <details className="edit">
+            <summary>Modifier</summary>
+            <form action={updateMeetup} className="box">
+              <input type="hidden" name="id" value={m.id} />
+              <label className="field">Titre<input name="title" maxLength={200} required defaultValue={m.title} /></label>
+              <label className="field">Date et heure (heure de Paris)<input name="startsAt" type="datetime-local" required defaultValue={toParisInput(m.startsAt)} /></label>
+              <label className="field">Lieu<input name="location" maxLength={200} required defaultValue={m.location} /></label>
+              <label className="field">Nombre de places<input name="capacity" type="number" min={Math.max(1, r.length)} defaultValue={m.capacity} /></label>
+              <HtmlEditor name="description" label="Description" defaultValue={bodyToHtml(m.description)} />
+              <button className="btn" type="submit">Enregistrer les modifications</button>
+            </form>
+          </details>
           </div>
         );
       })}

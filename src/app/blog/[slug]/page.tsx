@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { comments, posts } from "@/db/schema";
 import { addComment } from "@/lib/actions";
 import { dateFr } from "@/lib/format";
+import { bodyToHtml } from "@/lib/richtext";
 
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | undefined>> };
@@ -23,7 +24,7 @@ export default async function Article({ params, searchParams }: Props) {
       <Link href="/blog" className="back">← Tous les articles</Link>
       <div className="when" style={{ marginTop: 24 }}>{dateFr(post.publishedAt)}</div>
       <h1>{post.title}</h1>
-      {post.body.split(/\n{2,}/).map((para, i) => <p key={i}>{para}</p>)}
+      <div dangerouslySetInnerHTML={{ __html: bodyToHtml(post.body) }} />
 
       <section id="commentaires" style={{ marginTop: 48 }}>
         <h2>Commentaires ({list.length})</h2>

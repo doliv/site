@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { html } from "@/content/proposition";
+import { getPageHtml } from "@/lib/pages";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Une nouvelle proposition" };
 
-export default function Page() {
+export default async function Page() {
+  const html = await getPageHtml("proposition");
   return (
     <article className="narrow prose">
       <Link href="/" className="back">← Retour à l’accueil</Link>
